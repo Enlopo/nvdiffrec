@@ -101,6 +101,14 @@ class SIRENInitializer:
         return torch.empty(shape).uniform_(-limit, limit)
 
 
+def apply_initializer(layer, initializer):
+    # 对 layer 权重进行初始化
+    with torch.no_grad():
+        layer.weight.copy_(initializer(layer.weight.shape))
+        if layer.bias is not None:
+            nn.init.zeros_(layer.bias)  # 偏置初始化为零
+
+
 # Test Initializers
 def test_initializers():
     shape = (3, 3)
