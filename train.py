@@ -11,6 +11,7 @@ import os
 import time
 import argparse
 import json
+from shutil import copyfile
 
 import numpy as np
 import torch
@@ -182,7 +183,7 @@ def initial_guess_material(geometry, mlp, FLAGS, init_mat=None):
 # Validation & testing
 ###############################################################################
 
-def validate_itr(glctx, target, geometry, opt_material, lgt, FLAGS, it=0):
+def validate_itr(glctx, target, geometry, opt_material, lgt, FLAGS):
     result_dict = {}
     with torch.no_grad():
         lgt.build_mips()
@@ -190,7 +191,6 @@ def validate_itr(glctx, target, geometry, opt_material, lgt, FLAGS, it=0):
             lgt.xfm(target['mv'])
 
         buffers = geometry.render(glctx, target, lgt, opt_material)
-        geometry.export_obj(it, FLAGS.out_dir)
 
         result_dict['ref'] = util.rgb_to_srgb(target['img'][...,0:3])[0]
         result_dict['opt'] = util.rgb_to_srgb(buffers['shaded'][...,0:3])[0]
@@ -398,7 +398,13 @@ def optimize_mesh(
             display_image = FLAGS.display_interval and (it % FLAGS.display_interval == 0)
             save_image = FLAGS.save_interval and (it % FLAGS.save_interval == 0)
             if display_image or save_image:
-                result_image, result_dict = validate_itr(glctx, prepare_batch(next(v_it), FLAGS.background), geometry, opt_material, lgt, FLAGS, it)
+                result_image, result_dict = validate_itr(glctx, prepare_batch(next(v_it), FLAGS.background), geometry, opt_material, lgt, FLAGS)
+
+                saved_mesh = geometry.getMesh(opt_material)
+                saved_mesh_path = os.path.join(FLAGS.out_dir, "mesh", "it_%d" % it)
+                os.makedirs(saved_mesh_path, exist_ok=True)
+                obj.write_obj(saved_mesh_path, saved_mesh)
+
                 np_result_image = result_image.detach().cpu().numpy()
                 if display_image:
                     util.display_image(np_result_image, title='%d / %d' % (it, FLAGS.iter))
@@ -549,9 +555,9 @@ if __name__ == "__main__":
     if FLAGS.display_res is None:
         FLAGS.display_res = FLAGS.train_res
     if FLAGS.out_dir is None:
-        FLAGS.out_dir = 'out/cube_%d' % (FLAGS.train_res)
+        FLAGS.out_dir = os.path.join('out', 'cube_%d' % (FLAGS.train_res), time.strftime("_%Y%m%d_%H%M%S"))
     else:
-        FLAGS.out_dir = 'out/' + FLAGS.out_dir
+        FLAGS.out_dir = os.path.join('out', FLAGS.out_dir, time.strftime("%Y%m%d_%H%M%S"))
 
     if FLAGS.local_rank == 0:
         print("Config / Flags:")
@@ -561,6 +567,8 @@ if __name__ == "__main__":
         print("---------")
 
     os.makedirs(FLAGS.out_dir, exist_ok=True)
+    if os.path.exists(FLAGS.config):
+        copyfile(FLAGS.config, os.path.join(FLAGS.out_dir, 'config.json'))
 
     glctx = dr.RasterizeGLContext()
 

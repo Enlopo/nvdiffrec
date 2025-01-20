@@ -210,10 +210,6 @@ class DMTetGeometry(torch.nn.Module):
         return render.render_mesh(glctx, opt_mesh, target['mvp'], target['campos'], lgt, target['resolution'], spp=target['spp'], 
                                         msaa=True, background=target['background'], bsdf=bsdf)
 
-    def export_obj(self, it, path):
-        mesh = self.getMesh(material=None)
-        mesh.export_obj(it=it, path=path)
-
     def tick(self, glctx, target, lgt, opt_material, loss_fn, iteration):
 
         # ==============================================================================================
