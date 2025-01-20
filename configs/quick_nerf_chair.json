@@ -1,7 +1,7 @@
 {
     "ref_mesh": "data/nerf_synthetic/chair",
     "random_textures": true,
-    "iter": 5000,
+    "iter": 1000,
     "save_interval": 100,
     "texture_res": [ 2048, 2048 ],
     "train_res": [800, 800],
