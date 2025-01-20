@@ -182,7 +182,7 @@ def initial_guess_material(geometry, mlp, FLAGS, init_mat=None):
 # Validation & testing
 ###############################################################################
 
-def validate_itr(glctx, target, geometry, opt_material, lgt, FLAGS):
+def validate_itr(glctx, target, geometry, opt_material, lgt, FLAGS, it=0):
     result_dict = {}
     with torch.no_grad():
         lgt.build_mips()
@@ -190,6 +190,7 @@ def validate_itr(glctx, target, geometry, opt_material, lgt, FLAGS):
             lgt.xfm(target['mv'])
 
         buffers = geometry.render(glctx, target, lgt, opt_material)
+        geometry.export_obj(it, FLAGS.out_dir)
 
         result_dict['ref'] = util.rgb_to_srgb(target['img'][...,0:3])[0]
         result_dict['opt'] = util.rgb_to_srgb(buffers['shaded'][...,0:3])[0]
@@ -397,7 +398,7 @@ def optimize_mesh(
             display_image = FLAGS.display_interval and (it % FLAGS.display_interval == 0)
             save_image = FLAGS.save_interval and (it % FLAGS.save_interval == 0)
             if display_image or save_image:
-                result_image, result_dict = validate_itr(glctx, prepare_batch(next(v_it), FLAGS.background), geometry, opt_material, lgt, FLAGS)
+                result_image, result_dict = validate_itr(glctx, prepare_batch(next(v_it), FLAGS.background), geometry, opt_material, lgt, FLAGS, it)
                 np_result_image = result_image.detach().cpu().numpy()
                 if display_image:
                     util.display_image(np_result_image, title='%d / %d' % (it, FLAGS.iter))
@@ -471,6 +472,8 @@ def optimize_mesh(
             remaining_time = (FLAGS.iter-it)*iter_dur_avg
             print("iter=%5d, img_loss=%.6f, reg_loss=%.6f, lr=%.5f, time=%.1f ms, rem=%s" % 
                 (it, img_loss_avg, reg_loss_avg, optimizer.param_groups[0]['lr'], iter_dur_avg*1000, util.time_to_text(remaining_time)))
+
+        torch.cuda.empty_cache()
 
     return geometry, opt_material
 

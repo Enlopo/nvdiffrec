@@ -72,6 +72,40 @@ class Mesh:
             out.t_tng_idx = out.t_tng_idx.clone().detach()
         return out
 
+    def export_obj(self, it=0, path='out/test_mesh_export/'):
+        it_path = os.path.join(path, 'it_%d/' % it)
+        os.makedirs(it_path, exist_ok=True)
+
+        verts_numpy = self.v_pos.detach().cpu().numpy()
+        verts_path = os.path.join(it_path, 'verts.txt')
+        np.savetxt(verts_path, verts_numpy, fmt='%.6f')
+
+        faces_numpy = self.t_pos_idx.detach().cpu().numpy()
+        faces_path = os.path.join(it_path, 'faces.txt')
+        np.savetxt(faces_path, faces_numpy, fmt='%.d')
+
+        with open(verts_path, 'r') as f:
+            vertices = [line.strip().split() for line in f.readlines()]
+
+        # 读取面数据
+        with open(faces_path, 'r') as f:
+            faces = [line.strip().split() for line in f.readlines()]
+
+        output_file = os.path.join(it_path, 'mesh.obj')
+        # 打开输出文件
+        with open(output_file, 'w') as f:
+            # 写入顶点信息
+            for vertex in vertices:
+                f.write(f"v {vertex[0]} {vertex[1]} {vertex[2]}\n")
+
+            # 写入面信息
+            for face in faces:
+                # 索引从1开始
+                f.write(f"f {int(face[0]) + 1} {int(face[1]) + 1} {int(face[2]) + 1}\n")
+
+        print(f"OBJ file has been written to {output_file}")
+
+
 ######################################################################################
 # Mesh loeading helper
 ######################################################################################
