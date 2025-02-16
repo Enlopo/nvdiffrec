@@ -400,11 +400,6 @@ def optimize_mesh(
             if display_image or save_image:
                 result_image, result_dict = validate_itr(glctx, prepare_batch(next(v_it), FLAGS.background), geometry, opt_material, lgt, FLAGS)
 
-                saved_mesh = geometry.getMesh(opt_material)
-                saved_mesh_path = os.path.join(FLAGS.out_dir, "mesh", "it_%d" % it)
-                os.makedirs(saved_mesh_path, exist_ok=True)
-                obj.write_obj(saved_mesh_path, saved_mesh)
-
                 np_result_image = result_image.detach().cpu().numpy()
                 if display_image:
                     util.display_image(np_result_image, title='%d / %d' % (it, FLAGS.iter))
@@ -480,6 +475,15 @@ def optimize_mesh(
                 (it, img_loss_avg, reg_loss_avg, optimizer.param_groups[0]['lr'], iter_dur_avg*1000, util.time_to_text(remaining_time)))
 
         torch.cuda.empty_cache()
+
+        if FLAGS.local_rank == 0:
+            display_image = FLAGS.display_interval and (it % FLAGS.display_interval == 0)
+            save_image = FLAGS.save_interval and (it % FLAGS.save_interval == 0)
+            if display_image or save_image:
+                saved_mesh = geometry.getMesh(opt_material)
+                saved_mesh_path = os.path.join(FLAGS.out_dir, "mesh", "it_%d" % it)
+                os.makedirs(saved_mesh_path, exist_ok=True)
+                obj.write_obj(saved_mesh_path, saved_mesh)
 
     return geometry, opt_material
 
