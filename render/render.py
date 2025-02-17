@@ -45,13 +45,14 @@ def shade(
         all_tex_jitter = material['kd_ks_normal'].sample(gb_pos + torch.normal(mean=0, std=0.01, size=gb_pos.shape, device="cuda"))
         all_tex = material['kd_ks_normal'].sample(gb_pos)
         assert all_tex.shape[-1] == 9 or all_tex.shape[-1] == 10, "Combined kd_ks_normal must be 9 or 10 channels"
-        kd, ks, perturbed_nrm = all_tex[..., :-6], all_tex[..., -6:-3], all_tex[..., -3:]
+        kd, ks, add, perturbed_nrm = all_tex[..., :3], all_tex[..., 3:6], all_tex[..., 6:7], all_tex[..., 7:]
         # Compute albedo (kd) gradient, used for material regularizer
-        kd_grad    = torch.sum(torch.abs(all_tex_jitter[..., :-6] - all_tex[..., :-6]), dim=-1, keepdim=True) / 3
+        kd_grad    = torch.sum(torch.abs(all_tex_jitter[..., :3] - all_tex[..., :3]), dim=-1, keepdim=True) / 3
     else:
         kd_jitter  = material['kd'].sample(gb_texc + torch.normal(mean=0, std=0.005, size=gb_texc.shape, device="cuda"), gb_texc_deriv)
         kd = material['kd'].sample(gb_texc, gb_texc_deriv)
-        ks = material['ks'].sample(gb_texc, gb_texc_deriv)[..., 0:3] # skip alpha
+        ks = material['ks'].sample(gb_texc, gb_texc_deriv)
+        add = material['add'].sample(gb_texc, gb_texc_deriv)
         if 'normal' in material:
             perturbed_nrm = material['normal'].sample(gb_texc, gb_texc_deriv)
         kd_grad    = torch.sum(torch.abs(kd_jitter[..., 0:3] - kd[..., 0:3]), dim=-1, keepdim=True) / 3
@@ -76,12 +77,12 @@ def shade(
     bsdf = material['bsdf'] if bsdf is None else bsdf
     if bsdf == 'pbr':
         if isinstance(lgt, light.EnvironmentLight):
-            shaded_col = lgt.shade(gb_pos, gb_normal, kd, ks, view_pos, specular=True)
+            shaded_col = lgt.shade(gb_pos, gb_normal, kd, ks, add, view_pos, specular=True)
         else:
             assert False, "Invalid light type"
     elif bsdf == 'diffuse':
         if isinstance(lgt, light.EnvironmentLight):
-            shaded_col = lgt.shade(gb_pos, gb_normal, kd, ks, view_pos, specular=False)
+            shaded_col = lgt.shade(gb_pos, gb_normal, kd, ks, add, view_pos, specular=False)
         else:
             assert False, "Invalid light type"
     elif bsdf == 'normal':
@@ -92,6 +93,8 @@ def shade(
         shaded_col = kd
     elif bsdf == 'ks':
         shaded_col = ks
+    elif bsdf == 'add':
+        shaded_col = add
     else:
         assert False, "Invalid BSDF '%s'" % bsdf
     
@@ -206,7 +209,27 @@ def render_mesh(
         accum = background
         for buffers, rast in reversed(layers):
             alpha = (rast[..., -1:] > 0).float() * buffers[key][..., -1:]
-            accum = torch.lerp(accum, torch.cat((buffers[key][..., :-1], torch.ones_like(buffers[key][..., -1:])), dim=-1), alpha)
+
+            # 假设 accum 的目标通道数为 target_channels（需根据实际逻辑确定）
+            target_channels = accum.shape[-1]  # 直接取当前 accum 的最后一个维度
+
+            # 动态计算需要保留的通道数
+            keep_channels = min(buffers[key].shape[-1], target_channels - 1)  # 至少保留0个通道
+
+            # 构造拼接张量
+            if keep_channels > 0:
+                input_part = buffers[key][..., :keep_channels]
+            else:
+                input_part = torch.zeros_like(buffers[key][..., :0])  # 空张量
+
+            ones_part = torch.ones_like(buffers[key][..., :1]).expand(*input_part.shape[:-1],
+                                                                      target_channels - keep_channels)
+
+            combined = torch.cat([input_part, ones_part], dim=-1)
+
+            # 最终执行线性插值
+            accum = torch.lerp(accum, combined, alpha)
+
             if antialias:
                 accum = dr.antialias(accum.contiguous(), rast, v_pos_clip, mesh.t_pos_idx.int())
         return accum
@@ -272,4 +295,4 @@ def render_uv(ctx, mesh, resolution, mlp_texture):
     all_tex = mlp_texture.sample(gb_pos)
     assert all_tex.shape[-1] == 9 or all_tex.shape[-1] == 10, "Combined kd_ks_normal must be 9 or 10 channels"
     perturbed_nrm = all_tex[..., -3:]
-    return (rast[..., -1:] > 0).float(), all_tex[..., :-6], all_tex[..., -6:-3], util.safe_normalize(perturbed_nrm)
+    return (rast[..., -1:] > 0).float(), all_tex[..., :-7], all_tex[..., -7:-4], all_tex[..., -4, -3], util.safe_normalize(perturbed_nrm)

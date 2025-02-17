@@ -113,19 +113,24 @@ def xatlas_uvmap(glctx, geometry, mat, FLAGS):
 
     new_mesh = mesh.Mesh(v_tex=uvs, t_tex_idx=faces, base=eval_mesh)
 
-    mask, kd, ks, normal = render.render_uv(glctx, new_mesh, FLAGS.texture_res, eval_mesh.material['kd_ks_normal'])
+    mask, kd, ks, add, normal = render.render_uv(glctx, new_mesh, FLAGS.texture_res, eval_mesh.material['kd_ks_normal'])
     
     if FLAGS.layers > 1:
         kd = torch.cat((kd, torch.rand_like(kd[...,0:1])), dim=-1)
 
-    kd_min, kd_max = torch.tensor(FLAGS.kd_min, dtype=torch.float32, device='cuda'), torch.tensor(FLAGS.kd_max, dtype=torch.float32, device='cuda')
-    ks_min, ks_max = torch.tensor(FLAGS.ks_min, dtype=torch.float32, device='cuda'), torch.tensor(FLAGS.ks_max, dtype=torch.float32, device='cuda')
+    kd_min, kd_max = (torch.tensor(FLAGS.kd_min, dtype=torch.float32, device='cuda'),
+                      torch.tensor(FLAGS.kd_max, dtype=torch.float32, device='cuda'))
+    ks_min, ks_max = (torch.tensor(FLAGS.ks_min, dtype=torch.float32, device='cuda'),
+                      torch.tensor(FLAGS.ks_max, dtype=torch.float32, device='cuda'))
+    additive_min, additive_max = (torch.tensor(FLAGS.add_min, dtype=torch.float32, device='cuda'),
+                                  torch.tensor(FLAGS.add_max, dtype=torch.float32, device='cuda'))
     nrm_min, nrm_max = torch.tensor(FLAGS.nrm_min, dtype=torch.float32, device='cuda'), torch.tensor(FLAGS.nrm_max, dtype=torch.float32, device='cuda')
 
     new_mesh.material = material.Material({
         'bsdf'   : mat['bsdf'],
         'kd'     : texture.Texture2D(kd, min_max=[kd_min, kd_max]),
         'ks'     : texture.Texture2D(ks, min_max=[ks_min, ks_max]),
+        'add'    : texture.Texture2D(add, min_max=[additive_min, additive_max]),
         'normal' : texture.Texture2D(normal, min_max=[nrm_min, nrm_max])
     })
 
@@ -138,11 +143,12 @@ def xatlas_uvmap(glctx, geometry, mat, FLAGS):
 def initial_guess_material(geometry, mlp, FLAGS, init_mat=None):
     kd_min, kd_max = torch.tensor(FLAGS.kd_min, dtype=torch.float32, device='cuda'), torch.tensor(FLAGS.kd_max, dtype=torch.float32, device='cuda')
     ks_min, ks_max = torch.tensor(FLAGS.ks_min, dtype=torch.float32, device='cuda'), torch.tensor(FLAGS.ks_max, dtype=torch.float32, device='cuda')
+    add_min, add_max = torch.tensor(FLAGS.add_min, dtype=torch.float32, device='cuda'), torch.tensor(FLAGS.add_max, dtype=torch.float32, device='cuda')
     nrm_min, nrm_max = torch.tensor(FLAGS.nrm_min, dtype=torch.float32, device='cuda'), torch.tensor(FLAGS.nrm_max, dtype=torch.float32, device='cuda')
     if mlp:
-        mlp_min = torch.cat((kd_min[0:3], ks_min, nrm_min), dim=0)
-        mlp_max = torch.cat((kd_max[0:3], ks_max, nrm_max), dim=0)
-        mlp_map_opt = mlptexture.MLPTexture3D(geometry.getAABB(), channels=9, min_max=[mlp_min, mlp_max])
+        mlp_min = torch.cat((kd_min[0:3], ks_min, add_min, nrm_min), dim=0)
+        mlp_max = torch.cat((kd_max[0:3], ks_max, add_min, nrm_max), dim=0)
+        mlp_map_opt = mlptexture.MLPTexture3D(geometry.getAABB(), channels=10, min_max=[mlp_min, mlp_max])
         mat =  material.Material({'kd_ks_normal' : mlp_map_opt})
     else:
         # Setup Kd (albedo) and Ks (x, roughness, metalness) textures
@@ -215,6 +221,8 @@ def validate_itr(glctx, target, geometry, opt_material, lgt, FLAGS):
                         result_dict[layer['bsdf']] = util.rgb_to_srgb(buffers['shaded'][0, ..., 0:3])  
                     elif layer['bsdf'] == 'normal':
                         result_dict[layer['bsdf']] = (buffers['shaded'][0, ..., 0:3] + 1) * 0.5
+                    elif layer['bsdf'] == 'add':
+                        result_dict[layer['bsdf']] = buffers['shaded'][0, ..., 0:1].repeat(1, 1, 3)
                     else:
                         result_dict[layer['bsdf']] = buffers['shaded'][0, ..., 0:3]
                     result_image = torch.cat([result_image, result_dict[layer['bsdf']]], axis=1)
@@ -476,14 +484,14 @@ def optimize_mesh(
 
         torch.cuda.empty_cache()
 
-        if FLAGS.local_rank == 0:
-            display_image = FLAGS.display_interval and (it % FLAGS.display_interval == 0)
-            save_image = FLAGS.save_interval and (it % FLAGS.save_interval == 0)
-            if display_image or save_image:
-                saved_mesh = geometry.getMesh(opt_material)
-                saved_mesh_path = os.path.join(FLAGS.out_dir, "mesh", "it_%d" % it)
-                os.makedirs(saved_mesh_path, exist_ok=True)
-                obj.write_obj(saved_mesh_path, saved_mesh)
+        # if FLAGS.local_rank == 0:
+        #     display_image = FLAGS.display_interval and (it % FLAGS.display_interval == 0)
+        #     save_image = FLAGS.save_interval and (it % FLAGS.save_interval == 0)
+        #     if display_image or save_image:
+        #         saved_mesh = geometry.getMesh(opt_material)
+        #         saved_mesh_path = os.path.join(FLAGS.out_dir, "mesh", "it_%d" % it)
+        #         os.makedirs(saved_mesh_path, exist_ok=True)
+        #         obj.write_obj(saved_mesh_path, saved_mesh)
 
     return geometry, opt_material
 
@@ -534,6 +542,8 @@ if __name__ == "__main__":
     FLAGS.kd_max              = [ 1.0,  1.0,  1.0,  1.0]
     FLAGS.ks_min              = [ 0.0, 0.08,  0.0]       # Limits for ks
     FLAGS.ks_max              = [ 1.0,  1.0,  1.0]
+    FLAGS.add_min             = [0.0]       # Limits for additive color
+    FLAGS.add_max             = [1.0]
     FLAGS.nrm_min             = [-1.0, -1.0,  0.0]       # Limits for normal map
     FLAGS.nrm_max             = [ 1.0,  1.0,  1.0]
     FLAGS.cam_near_far        = [0.1, 1000.0]

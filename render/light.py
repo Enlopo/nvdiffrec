@@ -82,15 +82,13 @@ class EnvironmentLight(torch.nn.Module):
         white = (self.base[..., 0:1] + self.base[..., 1:2] + self.base[..., 2:3]) / 3.0
         return torch.mean(torch.abs(self.base - white))
 
-    def shade(self, gb_pos, gb_normal, kd, ks, view_pos, specular=True):
+    def shade(self, gb_pos, gb_normal, kd, ks, add, view_pos, specular=True):
         wo = util.safe_normalize(view_pos - gb_pos)
 
         if specular:
-            shadow = ks[..., 0:1]
-            roughness = ks[..., 1:2] # y component
-            metallic  = ks[..., 2:3] # z component
-            spec_col  = (1.0 - metallic)*0.04 + kd * metallic
-            diff_col  = kd * (1.0 - metallic) * (1.0 - shadow)
+            f0 = ks[..., :3]  # specular 反射率 F₀
+            roughness = add  # 粗糙度
+            diff_col = kd  # 漫反射颜色直接使用 kd
         else:
             diff_col = kd
 
@@ -117,8 +115,9 @@ class EnvironmentLight(torch.nn.Module):
             miplevel = self.get_mip(roughness)
             spec = dr.texture(self.specular[0][None, ...], reflvec.contiguous(), mip=list(m[None, ...] for m in self.specular[1:]), mip_level_bias=miplevel[..., 0], filter_mode='linear-mipmap-linear', boundary_mode='cube')
 
-            # Compute aggregate lighting
-            reflectance = spec_col * fg_lookup[...,0:1] + fg_lookup[...,1:2]
+            # 组合 specular 贡献：利用 FG lookup 对 Fresnel 和几何项进行调整，
+            # 其中 reflectance = F₀ * FG0 + FG1
+            reflectance = f0 * fg_lookup[..., 0:1] + fg_lookup[..., 1:2]
             shaded_col += spec * reflectance
 
         return shaded_col * (1.0 - ks[..., 0:1]) # Modulate by hemisphere visibility
