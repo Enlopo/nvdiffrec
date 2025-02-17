@@ -114,6 +114,9 @@ def save_mtl(fn, material):
             if 'normal' in material.keys():
                 f.write('bump texture_n.png\n')
                 texture.save_texture2D(os.path.join(folder, 'texture_n.png'), material['normal'], lambda_fn=lambda x:(util.safe_normalize(x)+1)*0.5)
+            if 'add' in material.keys():
+                f.write('map_Add texture_add.png\n')
+                texture.save_texture2D(os.path.join(folder, 'texture_add.png'), material['add'])
         else:
             f.write('Kd 1 1 1\n')
             f.write('Ks 0 0 0\n')

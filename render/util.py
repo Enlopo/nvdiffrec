@@ -420,6 +420,9 @@ def display_image(image, title=None):
 
 def save_image(fn, x : np.ndarray):
     try:
+        # 如果是单通道图像，将其 squeeze 成二维数组
+        if x.ndim == 3 and x.shape[-1] == 1:
+            x = np.squeeze(x, axis=-1)
         if os.path.splitext(fn)[1] == ".png":
             imageio.imwrite(fn, np.clip(np.rint(x * 255.0), 0, 255).astype(np.uint8), compress_level=3) # Low compression for faster saving
         else:

@@ -294,5 +294,5 @@ def render_uv(ctx, mesh, resolution, mlp_texture):
     # Sample out textures from MLP
     all_tex = mlp_texture.sample(gb_pos)
     assert all_tex.shape[-1] == 9 or all_tex.shape[-1] == 10, "Combined kd_ks_normal must be 9 or 10 channels"
-    perturbed_nrm = all_tex[..., -3:]
-    return (rast[..., -1:] > 0).float(), all_tex[..., :-7], all_tex[..., -7:-4], all_tex[..., -4, -3], util.safe_normalize(perturbed_nrm)
+    return (rast[..., -1:] > 0).float(), all_tex[..., :3], all_tex[..., 3:6], all_tex[..., 6:7], util.safe_normalize(
+        all_tex[..., 7:10])

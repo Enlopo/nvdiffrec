@@ -161,10 +161,17 @@ def initial_guess_material(geometry, mlp, FLAGS, init_mat=None):
             ksG = np.random.uniform(size=FLAGS.texture_res + [1], low=ks_min[1].cpu(), high=ks_max[1].cpu())
             ksB = np.random.uniform(size=FLAGS.texture_res + [1], low=ks_min[2].cpu(), high=ks_max[2].cpu())
 
+            add_init = torch.rand(size=FLAGS.texture_res + [num_channels], device='cuda')
+            add_map_opt = texture.create_trainable(add_init,
+                                                   FLAGS.texture_res,
+                                                   not FLAGS.custom_mip,
+                                                   [add_min, add_max]
+                                                   )
             ks_map_opt = texture.create_trainable(np.concatenate((ksR, ksG, ksB), axis=2), FLAGS.texture_res, not FLAGS.custom_mip, [ks_min, ks_max])
         else:
             kd_map_opt = texture.create_trainable(init_mat['kd'], FLAGS.texture_res, not FLAGS.custom_mip, [kd_min, kd_max])
             ks_map_opt = texture.create_trainable(init_mat['ks'], FLAGS.texture_res, not FLAGS.custom_mip, [ks_min, ks_max])
+            add_map_opt = texture.create_trainable(init_mat['add'], FLAGS.texture_res, not FLAGS.custom_mip, [add_min, add_max])
 
         # Setup normal map
         if FLAGS.random_textures or init_mat is None or 'normal' not in init_mat:
@@ -175,6 +182,7 @@ def initial_guess_material(geometry, mlp, FLAGS, init_mat=None):
         mat = material.Material({
             'kd'     : kd_map_opt,
             'ks'     : ks_map_opt,
+            'add'    : add_map_opt,
             'normal' : normal_map_opt
         })
 
