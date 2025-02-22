@@ -476,14 +476,14 @@ def optimize_mesh(
 
         torch.cuda.empty_cache()
 
-        if FLAGS.local_rank == 0:
-            display_image = FLAGS.display_interval and (it % FLAGS.display_interval == 0)
-            save_image = FLAGS.save_interval and (it % FLAGS.save_interval == 0)
-            if display_image or save_image:
-                saved_mesh = geometry.getMesh(opt_material)
-                saved_mesh_path = os.path.join(FLAGS.out_dir, "mesh", "it_%d" % it)
-                os.makedirs(saved_mesh_path, exist_ok=True)
-                obj.write_obj(saved_mesh_path, saved_mesh)
+        # if FLAGS.local_rank == 0:
+        #     display_image = FLAGS.display_interval and (it % FLAGS.display_interval == 0)
+        #     save_image = FLAGS.save_interval and (it % FLAGS.save_interval == 0)
+        #     if display_image or save_image:
+        #         saved_mesh = geometry.getMesh(opt_material)
+        #         saved_mesh_path = os.path.join(FLAGS.out_dir, "mesh", "it_%d" % it)
+        #         os.makedirs(saved_mesh_path, exist_ok=True)
+        #         obj.write_obj(saved_mesh_path, saved_mesh)
 
     return geometry, opt_material
 
